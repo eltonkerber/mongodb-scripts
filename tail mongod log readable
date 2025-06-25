@@ -1,0 +1,56 @@
+tail -100f /var/log/mongodb/mongod.log \
+  | grep COLLSCAN \
+  | awk '
+{
+  # 1) appName
+  if (match($0, /"appName":"[^"]+"/)) {
+    app = substr($0, RSTART+11, RLENGTH-12)
+  } else app = ""
+
+  # 2) durationMillis
+  if (match($0, /"durationMillis":[0-9]+/)) {
+    duration = substr($0, RSTART+16, RLENGTH-16)
+  } else duration = ""
+
+  # 3) keysExamined
+  if (match($0, /"keysExamined":[0-9]+/)) {
+    keys = substr($0, RSTART+14, RLENGTH-14)
+  } else keys = ""
+
+  # 4) docsExamined
+  if (match($0, /"docsExamined":[0-9]+/)) {
+    docs = substr($0, RSTART+15, RLENGTH-15)
+  } else docs = ""
+
+  # 5) queryHash
+  if (match($0, /"queryHash":"[^"]+"/)) {
+    qhash = substr($0, RSTART+13, RLENGTH-14)
+  } else qhash = ""
+
+  # 6) extrai o JSON inteiro de "command":{...}
+  cmd = ""
+  if (match($0, /"command":\{/)) {
+    str = substr($0, RSTART)
+    lvl = 0
+    for (i = 1; i <= length(str); i++) {
+      c = substr(str, i, 1)
+      cmd = cmd c
+      if (c == "{")      lvl++
+      else if (c == "}") {
+        lvl--
+        if (lvl == 0) break
+      }
+    }
+    # remove o prefixo "command":
+    cmd = substr(cmd, length("\"command\":")+1)
+  }
+
+  # 7) tira o $db de dentro do cmd já capturado
+  db = ""
+  if (match(cmd, /"\$db":"[^"]+"/)) {
+    db = substr(cmd, RSTART+7, RLENGTH-8)
+  }
+
+  printf "App: %s | DB: %s | Duration: %sms | QueryHash: %s | KeysExamined: %s | DocsExamined: %s | Command: %s\n", \
+    app, db, duration, qhash, keys, docs, cmd
+}'
